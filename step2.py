@@ -49,7 +49,7 @@ def read_into_buffer(filename):
 STACK_ADDR = 0xc0000000
 STACK_SIZE = 1024 * 1024
 
-ARM_CODE = bytes(read_into_buffer("libnative-lib.so_0xb3b64000_0x6000.so"))
+ARM_CODE = bytes(read_into_buffer("libnative-lib.so_0xb3b64000_0x6000.so.1"))
 ADDRESS = 0xb3b64000
 print("Emulate arm code")
 try:

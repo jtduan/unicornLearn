@@ -10,7 +10,8 @@ if(Java.available) {
     Java.perform(function () {
         var currentApplication = Java.use("android.app.ActivityThread").currentApplication();
         var dir = currentApplication.getApplicationContext().getFilesDir().getPath();
-        var libso = Process.getModuleByName("libnative-lib.so");
+        var libso = Process.getModuleByName("libc.so");
+        // var libso = Process.getModuleByName("libnative-lib.so");
         console.log("[name]:", libso.name);
         console.log("[base]:", libso.base);
         console.log("[size]:", ptr(libso.size));
@@ -18,9 +19,9 @@ if(Java.available) {
         var file_path = dir + "/" + libso.name + "_" + libso.base + "_" + ptr(libso.size) + ".so";
         var file_handle = new File(file_path, "wb");
         if (file_handle && file_handle != null) {
-            Memory.protect(ptr(libso.base), libso.size, 'rwx');
-            var libso_buffer = Memory.readByteArray(libso.base, libso.size);
-            // var libso_buffer = ptr(libso.base).readByteArray(libso.size);
+            // Memory.protect(ptr(libso.base), libso.size, 'rwx');
+            libso_buffer = Memory.readByteArray(libso.base, libso.size);
+            var libso_buffer = Memory.readByteArray(0xaeb00000, 0x80000);
             file_handle.write(libso_buffer);
             file_handle.flush();
             file_handle.close();
