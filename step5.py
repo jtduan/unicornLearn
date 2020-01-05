@@ -37,11 +37,25 @@ def hook_code(uc, address, size, user_data):
         print("new string_utf:%s", uc.mem_read(mu.reg_read(UC_ARM_REG_R1), 10))
         mu.reg_write(UC_ARM_REG_R0, 0x23)
         # print(uc.mem_read(mu.reg_read(UC_ARM_REG_R0), 10))
-    if address == LIB_C_ADDRESS + 0x17250:
-        print("hook malloc")
-        mu.mem_map(0x10000000, 0x1000)
-        mu.reg_write(UC_ARM_REG_R0, 0x10000000)
-        mu.reg_write(UC_ARM_REG_PC, mu.reg_read(UC_ARM_REG_LR))
+    # if address == LIB_C_ADDRESS + 0x4059C:
+    #     print("hook thread_self")
+    #     mu.reg_write(UC_ARM_REG_R0, 0x1)
+    #     mu.reg_write(UC_ARM_REG_PC, mu.reg_read(UC_ARM_REG_LR))
+
+    # if address == LIB_C_ADDRESS + 0x492B0:
+    #     print("hook je_arena_choose.part.22")
+    #     mu.reg_write(UC_ARM_REG_R0, 0x1)
+    #     mu.reg_write(UC_ARM_REG_PC, mu.reg_read(UC_ARM_REG_LR))
+
+    if address == 0xb6c62ad6:
+        print("hook MCR.part.22")
+        # mu.reg_write(UC_ARM_REG_R4, 0xB6F04B7C)
+
+    # if address == LIB_C_ADDRESS + 0x17250:
+    #     print("hook malloc")
+    #     mu.mem_map(0x10000000, 0x1000)
+    #     mu.reg_write(UC_ARM_REG_R0, 0x10000000)
+    #     mu.reg_write(UC_ARM_REG_PC, mu.reg_read(UC_ARM_REG_LR))
 
 
 OVERRIDE_TIMEOFDAY = False
@@ -110,30 +124,32 @@ def read_into_buffer(filename):
 
 
 STACK_ADDR = 0xbe23b000
-STACK_SIZE = 0xbea3a000 - 0xbe23b000
+STACK_SIZE = 0x7ff000
 
-ARM_CODE = bytes(read_into_buffer("libnative-lib.so_0xb3ac3000_0x6000.so"))
-ADDRESS = 0xb3ac3000
+ARM_CODE = bytes(read_into_buffer("libnative-lib.so_0xb3ae3000_0x6000.so"))
+ADDRESS = 0xb3ae3000
 print("Emulate arm code")
 
 LIB_C_CODE = bytes(read_into_buffer("libc.so_0xb6c23000_0x79000.so"))
 LIB_C_ADDRESS = 0xb6c23000
 
 
+# Todo:还存在bug
 def addJniMap(mu, base):
     mu.mem_map(base, 0x6000)
-    addr_func = base + 0x2000
+    mu.mem_write(base, base.to_bytes(4, byteorder='little'))  # b"\x01\x12\x03\x05"
     offset = 0x29c
-    mu.mem_write(base + offset, b"\x89\x49\x00\x00")  # b"\x01\x12\x03\x05"
+    mu.mem_write(base + offset, (base + 0x00004989).to_bytes(4, byteorder='little'))  # b"\x01\x12\x03\x05"
+    # mu.mem_write(base + offset, b"\x89\x49\x00\x00")  # b"\x01\x12\x03\x05"
     asm = "PUSH {R4,LR}\n" \
           "MOV R4, #" + hex(offset) + "\n" \
                                       "IT AL\n" \
                                       "POP {R4,PC}"
     keystone = Ks(KS_ARCH_ARM, KS_MODE_THUMB)
     asm_bytes_list, asm_count = keystone.asm(bytes(asm, encoding='ascii'))
-    mu.mem_write(0x4988, bytes(asm_bytes_list))
+    mu.mem_write(base + 0x4988, bytes(asm_bytes_list))
 
-    mu.hook_add(UC_HOOK_CODE, hook_code, begin=0x4988, end=0x4998)
+    # mu.hook_add(UC_HOOK_CODE, hook_code, begin=0x4988, end=0x4998)
     pass
 
 
@@ -151,13 +167,30 @@ try:
     mu.reg_write(UC_ARM_REG_R3, 0x4)
 
     mu.mem_map(STACK_ADDR, STACK_SIZE)
+    # STACK_CODE = bytes(read_into_buffer("stack.so_0xbe23b000_0x7ff000.so"))
+    # mu.mem_write(STACK_ADDR, STACK_CODE)
     mu.reg_write(UC_ARM_REG_SP, STACK_ADDR + STACK_SIZE)
 
-    mu.mem_map(0xb6ca0000, 0x8000)
-    mu.mem_map(0xaeaf7000, 0x1000)
-    mu.mem_map(0xfffe0000, 0x1000)
+    mu.mem_map(0xb6c9c000, 0x10000)
+    EXTRA_CODE = bytes(read_into_buffer("extra.so_0xb6c9c000_0x10000.so"))
+    mu.mem_write(0xb6c9c000, EXTRA_CODE)
+    # mu.mem_map(0x0, 0x1000)
 
-    addJniMap(mu, 0x0)
+    mu.mem_map(0xb6ee5000, 0x20000)
+    LINK_CODE = bytes(read_into_buffer("linker_0xb6ee5000_0x20000.so"))
+    mu.mem_write(0xb6ee5000, LINK_CODE)
+
+    addJniMap(mu, 0x10000)
+    mu.reg_write(UC_ARM_REG_R0, 0x10000)
+    mu.reg_write(UC_ARM_REG_C13_C0_3, 0xB6F04B7C) ##Todo:此处是debug看到的，如果不能debug,如何拿到该值？
+
+    mu.mem_map(0xb4c40000, 0x100000)
+    MALLOC_CODE = bytes(read_into_buffer("malloc_0xb4c40000_0x100000.so"))
+    mu.mem_write(0xb4c40000, MALLOC_CODE)
+    # mu.mem_map(0x0, 0x1000)
+    mu.mem_map(0xaa100000, 0x40000)
+    MALLOC_CODE = bytes(read_into_buffer("malloc_0xaa100000_0x40000.so"))
+    mu.mem_write(0xaa100000, MALLOC_CODE)
 
     mu.hook_add(UC_HOOK_CODE, hook_code)
     mu.hook_add(UC_HOOK_INTR, hook_interrupt)

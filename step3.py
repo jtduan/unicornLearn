@@ -14,6 +14,7 @@ from capstone.arm import *
 md_arm = Cs(CS_ARCH_ARM, CS_MODE_ARM)
 md_thumb = Cs(CS_ARCH_ARM, CS_MODE_THUMB)
 
+
 # callback for tracing instructions
 def hook_code(uc, address, size, user_data):
     CODE = uc.mem_read(address, size)
@@ -22,7 +23,7 @@ def hook_code(uc, address, size, user_data):
     #     mu.reg_read(UC_ARM_REG_R3), mu.reg_read(UC_ARM_REG_SP), mu.reg_read(UC_ARM_REG_PC)))
     # print(">>> Tracing instruction at 0x%x, instruction size = 0x%x,code=%s" % (
     #     address, size, ''.join(format(x, '02x') for x in CODE)))
-    value = mu.reg_read(UC_ARM_REG_CPSR) & 1
+    value = (mu.reg_read(UC_ARM_REG_CPSR) >> 5) & 1
     if (value == 1):
         for i in md_thumb.disasm(CODE, address):
             print("%x:\t%s\t%s\t%s" % (i.address, ''.join(format(x, '02x') for x in CODE), i.mnemonic, i.op_str))
@@ -65,20 +66,22 @@ ADDRESS = 0xb3b64000
 print("Emulate arm code")
 
 
+# Todo:还存在bug
 def addJniMap(mu, base):
     mu.mem_map(base, 0x6000)
-    addr_func = base + 0x2000
+    mu.mem_write(base, base.to_bytes(4, byteorder='little'))  # b"\x01\x12\x03\x05"
     offset = 0x29c
-    mu.mem_write(base + offset, b"\x89\x49\x00\x00")  # b"\x01\x12\x03\x05"
+    mu.mem_write(base + offset, (base + 0x00004989).to_bytes(4, byteorder='little'))  # b"\x01\x12\x03\x05"
+    # mu.mem_write(base + offset, b"\x89\x49\x00\x00")  # b"\x01\x12\x03\x05"
     asm = "PUSH {R4,LR}\n" \
           "MOV R4, #" + hex(offset) + "\n" \
                                       "IT AL\n" \
                                       "POP {R4,PC}"
     keystone = Ks(KS_ARCH_ARM, KS_MODE_THUMB)
     asm_bytes_list, asm_count = keystone.asm(bytes(asm, encoding='ascii'))
-    mu.mem_write(0x4988, bytes(asm_bytes_list))
+    mu.mem_write(base + 0x4988, bytes(asm_bytes_list))
 
-    mu.hook_add(UC_HOOK_CODE, hook_code, begin=0x4988, end=0x4998)
+    # mu.hook_add(UC_HOOK_CODE, hook_code, begin=0x4988, end=0x4998)
     pass
 
 
@@ -92,11 +95,12 @@ try:
 
     mu.mem_map(0xb6d30000, 0x80000)
     mu.mem_map(0xfffe0000, 0x1000)
-    addJniMap(mu, 0x0)
+    addJniMap(mu, 0x10000)
 
     mu.hook_add(UC_HOOK_CODE, hook_code, begin=ADDRESS, end=2 * 1024 * 1024)
     mu.hook_add(UC_HOOK_INTR, hook_interrupt)
     mu.hook_add(UC_HOOK_MEM_UNMAPPED, hook_unmapped)
+    mu.reg_write(UC_ARM_REG_R0, 0x10000)
 
     stop_pos = 0xb6dafff0
     mu.reg_write(UC_ARM_REG_LR, stop_pos)
